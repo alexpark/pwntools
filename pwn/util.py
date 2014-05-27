@@ -97,3 +97,34 @@ def bash(cmd, timeout = None, return_stderr = False):
 
 def isint(n):
     return isinstance(n, (int, long))
+
+def parse_getdents(rv, debug=False):
+    from pwn import u16
+    """parses getdents' struct for human """
+    i = 0
+    fn= []
+    while 1:
+        inode = rv[i:i+4]
+        off   = rv[i+4:i+8]
+        st_size = u16(rv[i+8:i+10])
+        fname   = rv[i+10:i+st_size]
+
+        if st_size == 0:
+            break
+        xfname = fname.split('\x00')[0]
+        if len(xfname) != 0:
+            fn.append(xfname)
+        i = i + st_size
+
+    if debug:
+        for f in fn:
+            print "[DEBUG]: (len: %s) - %s" % (len(f), repr(f))
+
+    return fn
+
+from basesock import basesock
+class ShellWithSocket(basesock):
+    def __init__(self, sock, timeout='defult', silent=False):
+        self.sock = sock
+        basesock.__init__(self, timeout, silent)
+        self.interactive()

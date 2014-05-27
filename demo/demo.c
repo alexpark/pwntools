@@ -31,10 +31,16 @@ int main(int argc, char **argv) {
       }
       p[numb++] = c;
       if (c == '\0') z++;
+      if ( numb > 3 && 
+        ( p[numb-1] == '#' && 
+          p[numb-2] == '#' && 
+          p[numb-3] == '#' ) ) {
+        p[numb] = '\0';
+        break;
+      }
     }
 
-    if ((shellcode = mmap(NULL, numb, PROT_READ | PROT_EXEC | PROT_WRITE,
-                          MAP_ANONYMOUS | MAP_PRIVATE, -1, 0)) == MAP_FAILED) {
+    if ((shellcode = mmap(NULL, numb, PROT_READ | PROT_EXEC | PROT_WRITE, MAP_ANONYMOUS | MAP_PRIVATE, -1, 0)) == MAP_FAILED) {
       perror("mmap() failed");
       return EXIT_FAILURE;
     }

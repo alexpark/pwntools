@@ -1,19 +1,25 @@
 from pwn.internal.shellcode_helper import *
 import random
 
-@shellcode_reqs(blob = True, avoider = True, arch='i386')
-def scramble(data, unclobber = None, bufreg = None):
+@shellcode_reqs(blob = True, avoider = True, arch=['i386', 'arm'], os=['linux'])
+def scramble(data, unclobber = None, bufreg = None, arch=None, os=None):
 
-    if unclobber == None:
-        unclobber = ['esp']
+    if arch == 'i386':
+        if unclobber == None:
+            unclobber = ['esp']
+        return _scramble_i386(flat(data), unclobber, bufreg, get_avoid())
 
-    return xor_additive_feedback(flat(data), unclobber, bufreg, get_avoid())
+    elif arch == 'arm':
+        if os == 'linux':
+            return _scramble_arm_linux(flat(data))
+
+    bug('OS/arch combination (%s, %s) is not supported for scramble' % (os, arch))
 
 # def alpha_mixed(code, **kwargs):
 #     avoid, getpc = __parse_kwargs(kwargs)
 #     pass
 
-def xor_additive_feedback(code, unclobber, bufreg, avoid):
+def _scramble_i386(code, unclobber, bufreg, avoid):
     """AKA shikata ga nai"""
 
     def encode(code):
@@ -144,3 +150,96 @@ def xor_additive_feedback(code, unclobber, bufreg, avoid):
     stub = getpc + init + loop
 
     return stub + encoded
+
+def _scramble_arm_linux(sc):
+    """Args: sc = plain shellcode in ARM with thumb_to_arm shellcode 
+    Scrambles ARM shellcode
+    """
+    def EncodingSC(sc, key):
+        xsc = ''
+        for i in range(0, len(sc)):
+            xsc += chr( ord(sc[i]) ^ key )
+
+        return xsc
+ 
+    def CheckBadChar(sc):
+        badChar = [ '\x00', '\x0a', '\x0d' ]
+        q = {}
+        q['null'] = 0
+        q['0A'] = 0
+        q['0D'] = 0
+        for s in sc:
+            if s in badChar:
+                if s == '\x00':
+                    q['null'] += 1
+                elif s == '\x0a':
+                    q['0A'] += 1
+                elif s == '\x0a':
+                    q['0D'] += 1
+        return q
+     
+    def XORing_Thumb(size=0, key=0x58):
+        xor = []
+        loopsize = 256-size
+        __ARM_NR_cacheflush = 0x0f0002
+        xor += ['add r6, pc, #92', # #80+#12
+                'bx r6',
+                'main:',
+                    'mov r4, #%s' % str(loopsize),
+                    'add r6, pc, #40', # #28+#12
+                    'ldrb r5, [r6, #36]',
+                    'eor  r5, r5, r5',
+                    'strb r5, [r6, #36]',
+                'loop:',
+                    'cmp r4, #256',
+                    'bxhi r6', 
+                    'sub r4, r4, #%s' % str(loopsize),
+                    'ldrb r5, [lr, r4]',
+                    'eor  r5, r5, #%s'% str(key), 
+                    'strb r5, [lr, r4]',
+                    'add  r4, r4, #%s' % str(loopsize+1),
+                'b loop',
+                'sync:',
+                    'mov r7, #2',
+                    'mov r1, #2',
+                    'mov r7, r7, LSL #19', # 0x100000
+                    'mov r1, r1, LSL #15', # 0x010000
+                    'add r6, pc, #1',
+                    'bx r6',
+                    '.code 16',
+                    'sub r7, r7, r1',      # 0x0f0000
+                    'add r7, #2',          # 0x0f0002 = __ARM_NR_cacheflush
+                    'sub r2, r2, r2',
+                    'mov r0, lr',
+                    'mov r1, lr',
+                    'add r1, #%s' % str(size+1),
+                    'svc 1',
+                    'b scode',
+                '.code 32',
+                'bl main',
+                'scode:'
+               ]
+     
+        return indent_shellcode(xor)
+ 
+    def FindXORKey(sc):
+        size = len(sc)
+        for i in range(0x00, 0xff):
+            key = 1
+            for s in sc:
+                x = (ord(s) ^ i)
+                if x in [0x0, 0xa, 0xd]:
+                    key = -1
+                    break
+            if key == 1:
+                log.info("Found XORing Key: 0x%02x" % (i))
+                return i
+                break
+
+
+    key = FindXORKey(sc)
+    decoder = XORing_Thumb(len(sc), key)
+    asm_decoder = asm(decoder)
+    xored_sc = EncodingSC(sc, key)
+    return asm_decoder + xored_sc
+

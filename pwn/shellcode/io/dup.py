@@ -105,7 +105,7 @@ def _dup_linux_thumb(sock):
     out+= mov('r7', 'SYS_dup2')
     out+= """
     loop:
-        mov r0, %(sock)s
+        mov r0, #%(sock)s
         sub r1, #1
         svc 1
         bne loop
