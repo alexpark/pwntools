@@ -1,4 +1,5 @@
 #!python
+# code snippet from http://crypto.stanford.edu/~blynn/rop/
 
 from pwn import *
 context('amd64', 'linux', 'ipv4')
